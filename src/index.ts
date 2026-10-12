@@ -1,5 +1,4 @@
-// Mockshop POC - Cloudflare Worker
-// Single-file implementation for MVP. Will refactor to domain/application/adapters in rewrite phase.
+// Cloudflare Worker: Mock Shop storefront
 
 interface Product {
   id: string;
@@ -15,24 +14,22 @@ export interface Env {
   ENVIRONMENT?: string;
 }
 
-// Mock products (12 total, 3 per category, 2 out of stock)
 const PRODUCTS: Product[] = [
   { id: "p01", name: "Cozy Blanket", description: "Soft and warm", priceCents: 2500, currency: "USD", category: "home", inStock: true },
   { id: "p02", name: "Plant Pot", description: "Ceramic handmade", priceCents: 1800, currency: "USD", category: "home", inStock: true },
   { id: "p03", name: "Wall Clock", description: "Minimalist design", priceCents: 3200, currency: "USD", category: "home", inStock: false },
-
   { id: "p04", name: "USB Hub", description: "7-port powered", priceCents: 4500, currency: "USD", category: "tech", inStock: true },
   { id: "p05", name: "Wireless Mouse", description: "Ergonomic shape", priceCents: 2200, currency: "USD", category: "tech", inStock: true },
   { id: "p06", name: "Phone Stand", description: "Adjustable metal", priceCents: 1200, currency: "USD", category: "tech", inStock: true },
-
   { id: "p07", name: "Puzzle 500pc", description: "Space theme", priceCents: 1500, currency: "USD", category: "toys", inStock: true },
   { id: "p08", name: "Action Figure", description: "Poseable joints", priceCents: 2800, currency: "USD", category: "toys", inStock: false },
   { id: "p09", name: "Building Blocks", description: "100 colorful pieces", priceCents: 3500, currency: "USD", category: "toys", inStock: true },
-
   { id: "p10", name: "Poetry Collection", description: "Modern verse", priceCents: 1200, currency: "USD", category: "books", inStock: true },
   { id: "p11", name: "SciFi Novel", description: "Award-winning", priceCents: 1800, currency: "USD", category: "books", inStock: true },
   { id: "p12", name: "Art History", description: "Illustrated guide", priceCents: 3800, currency: "USD", category: "books", inStock: true },
 ];
+
+const CATEGORIES = ["home", "tech", "toys", "books"] as const;
 
 const CATEGORY_COLORS: Record<string, string> = {
   home: "#4CAF50",
@@ -40,6 +37,43 @@ const CATEGORY_COLORS: Record<string, string> = {
   toys: "#FF9800",
   books: "#9C27B0",
 };
+
+const UI = {
+  shopName: "Mock Shop",
+  badgeLabel: "SANDBOX",
+  footerText: "Demo shop. Nothing here is real.",
+  allCategoryLabel: "All",
+  categoryLabels: {
+    home: "Home",
+    tech: "Tech",
+    toys: "Toys",
+    books: "Books",
+  },
+  outOfStockLabel: "Out of stock",
+};
+
+const SECURITY_HEADERS = {
+  "x-content-type-options": "nosniff",
+  "referrer-policy": "no-referrer",
+  "x-frame-options": "DENY",
+  "content-security-policy": "default-src 'self'; style-src 'unsafe-inline'",
+};
+
+const CACHE_CONTROL = "public, max-age=60";
+
+const CSS_STYLES = `
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; color: #333; }
+  header { background: white; padding: 16px; border-bottom: 1px solid #ddd; }
+  .container { max-width: 1200px; margin: 0 auto; padding: 16px; }
+  header h1 { font-size: 24px; font-weight: 600; }
+  .badge { display: inline-block; margin-left: 12px; padding: 4px 8px; background: #ff6b6b; color: white; font-size: 12px; border-radius: 4px; }
+  nav { background: white; padding: 16px; margin: 16px 0; border-radius: 8px; }
+  nav a { margin-right: 12px; padding: 8px 12px; text-decoration: none; color: #2196F3; border: 1px solid #ddd; border-radius: 4px; display: inline-block; }
+  nav a.active { background: #2196F3; color: white; border-color: #2196F3; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin: 16px 0; }
+  footer { text-align: center; padding: 32px 16px; color: #666; font-size: 14px; }
+`;
 
 function formatPrice(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
@@ -53,22 +87,43 @@ function filterProducts(category?: string, inStock?: boolean): Product[] {
   });
 }
 
+function escapeHtml(text: string): string {
+  const map: Record<string, string> = {
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  };
+  return text.replace(/[&<>"']/g, (m) => map[m] ?? m);
+}
+
 function renderProductCard(product: Product): string {
   const color = CATEGORY_COLORS[product.category];
+  const outOfStock = !product.inStock ? `<p style="color: red; margin: 8px 0;">${UI.outOfStockLabel}</p>` : "";
   return `
     <div style="border: 1px solid #ddd; padding: 16px; border-radius: 8px; text-align: center;">
       <div style="width: 100%; height: 60px; background-color: ${color}; border-radius: 4px; margin-bottom: 12px;"></div>
       <h3 style="margin: 8px 0;">${escapeHtml(product.name)}</h3>
       <p style="margin: 8px 0; color: #666; font-size: 14px;">${escapeHtml(product.description)}</p>
       <p style="margin: 8px 0; font-size: 18px; font-weight: bold;">${formatPrice(product.priceCents)}</p>
-      ${!product.inStock ? '<p style="color: red; margin: 8px 0;">Out of stock</p>' : ""}
+      ${outOfStock}
     </div>
   `;
 }
 
 function renderHomePage(products: Product[], selectedCategory?: string, environment?: string): string {
-  const categories = ["All", "Home", "Tech", "Toys", "Books"];
-  const categoryValues = ["", "home", "tech", "toys", "books"];
+  const categories = [UI.allCategoryLabel, ...Object.values(UI.categoryLabels)];
+  const categoryValues = ["", "home", "tech", "toys", "books"] as const;
+  const navLinks = categories
+    .map((cat, i) => {
+      const href = categoryValues[i] ? `/?category=${categoryValues[i]}` : "/";
+      const isActive = (selectedCategory ?? "") === (categoryValues[i] ?? "");
+      return `<a href="${href}"${isActive ? ' class="active"' : ""}>${cat}</a>`;
+    })
+    .join("");
+
+  const badge = environment === "sandbox" ? ` <span class="badge">${UI.badgeLabel}</span>` : "";
 
   return `
     <!DOCTYPE html>
@@ -76,48 +131,21 @@ function renderHomePage(products: Product[], selectedCategory?: string, environm
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Mock Shop</title>
-        <style>
-          * { margin: 0; padding: 0; box-sizing: border-box; }
-          body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; color: #333; }
-          header { background: white; padding: 16px; border-bottom: 1px solid #ddd; }
-          .container { max-width: 1200px; margin: 0 auto; padding: 16px; }
-          header h1 { font-size: 24px; font-weight: 600; }
-          .badge { display: inline-block; margin-left: 12px; padding: 4px 8px; background: #ff6b6b; color: white; font-size: 12px; border-radius: 4px; }
-          nav { background: white; padding: 16px; margin: 16px 0; border-radius: 8px; }
-          nav a { margin-right: 12px; padding: 8px 12px; text-decoration: none; color: #2196F3; border: 1px solid #ddd; border-radius: 4px; display: inline-block; }
-          nav a.active { background: #2196F3; color: white; border-color: #2196F3; }
-          .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin: 16px 0; }
-          footer { text-align: center; padding: 32px 16px; color: #666; font-size: 14px; }
-        </style>
+        <title>${UI.shopName}</title>
+        <style>${CSS_STYLES}</style>
       </head>
       <body>
         <header>
-          <h1>Mock Shop${environment === "sandbox" ? ' <span class="badge">SANDBOX</span>' : ""}</h1>
+          <h1>${UI.shopName}${badge}</h1>
         </header>
         <div class="container">
-          <nav>
-            ${categories
-              .map((cat, i) => {
-                const href = categoryValues[i] ? `/?category=${categoryValues[i]}` : "/";
-                const isActive = (selectedCategory ?? "") === (categoryValues[i] ?? "");
-                return `<a href="${href}"${isActive ? ' class="active"' : ""}>${cat}</a>`;
-              })
-              .join("")}
-          </nav>
-          <div class="grid">
-            ${products.map((p) => renderProductCard(p)).join("")}
-          </div>
+          <nav>${navLinks}</nav>
+          <div class="grid">${products.map((p) => renderProductCard(p)).join("")}</div>
         </div>
-        <footer>Demo shop. Nothing here is real.</footer>
+        <footer>${UI.footerText}</footer>
       </body>
     </html>
   `;
-}
-
-function escapeHtml(text: string): string {
-  const map: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
-  return text.replace(/[&<>"']/g, (m) => map[m] ?? m);
 }
 
 export default {
@@ -126,12 +154,10 @@ export default {
     const environment = env.ENVIRONMENT ?? "local";
 
     try {
-      // GET /health
       if (url.pathname === "/health") {
         return Response.json({ status: "ok", environment });
       }
 
-      // GET /api/products
       if (url.pathname === "/api/products") {
         if (request.method !== "GET") {
           return Response.json({ error: "method_not_allowed" }, { status: 405 });
@@ -140,24 +166,20 @@ export default {
         const category = url.searchParams.get("category");
         const inStock = url.searchParams.get("inStock") === "true";
 
-        // Validate category
-        if (category && !["home", "tech", "toys", "books"].includes(category)) {
+        if (category && !CATEGORIES.includes(category as any)) {
           return Response.json({ error: "invalid_category" }, { status: 400 });
         }
 
         const products = filterProducts(category ?? undefined, inStock ? true : undefined);
-        return new Response(
-          JSON.stringify({ items: products, total: products.length }),
-          {
-            headers: {
-              "content-type": "application/json; charset=utf-8",
-              "cache-control": "public, max-age=60",
-            },
-          }
-        );
+        return new Response(JSON.stringify({ items: products, total: products.length }), {
+          headers: {
+            "content-type": "application/json; charset=utf-8",
+            "cache-control": CACHE_CONTROL,
+            ...SECURITY_HEADERS,
+          },
+        });
       }
 
-      // GET /api/products/{id}
       if (url.pathname.startsWith("/api/products/")) {
         if (request.method !== "GET") {
           return Response.json({ error: "method_not_allowed" }, { status: 405 });
@@ -173,17 +195,16 @@ export default {
         return new Response(JSON.stringify(product), {
           headers: {
             "content-type": "application/json; charset=utf-8",
-            "cache-control": "public, max-age=60",
+            "cache-control": CACHE_CONTROL,
+            ...SECURITY_HEADERS,
           },
         });
       }
 
-      // GET / (home page)
       if (url.pathname === "/" && request.method === "GET") {
         const category = url.searchParams.get("category") ?? undefined;
 
-        // Validate category
-        if (category && !["home", "tech", "toys", "books"].includes(category)) {
+        if (category && !CATEGORIES.includes(category as any)) {
           return new Response("Invalid category", { status: 400 });
         }
 
@@ -193,15 +214,11 @@ export default {
         return new Response(html, {
           headers: {
             "content-type": "text/html; charset=utf-8",
-            "x-content-type-options": "nosniff",
-            "referrer-policy": "no-referrer",
-            "x-frame-options": "DENY",
-            "content-security-policy": "default-src 'self'; style-src 'unsafe-inline'",
+            ...SECURITY_HEADERS,
           },
         });
       }
 
-      // 404
       return new Response("Not found", { status: 404 });
     } catch (error) {
       return Response.json({ error: "internal_server_error" }, { status: 500 });
