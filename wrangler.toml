@@ -1,0 +1,17 @@
+name = "mockshop"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+
+# Sandbox: https://mockshop-sbx.dr4w.io
+[env.sandbox]
+name = "mockshop-sbx"
+routes = [{ pattern = "mockshop-sbx.dr4w.io", custom_domain = true }]
+[env.sandbox.vars]
+ENVIRONMENT = "sandbox"
+
+# Production: https://mockshop.dr4w.io (deployed only via scripts/deploy.sh prod after approval)
+[env.production]
+name = "mockshop"
+routes = [{ pattern = "mockshop.dr4w.io", custom_domain = true }]
+[env.production.vars]
+ENVIRONMENT = "production"
