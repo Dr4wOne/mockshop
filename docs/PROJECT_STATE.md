@@ -6,16 +6,16 @@
 **Architecture**: Small service (single-file POC, will refactor to clean layers in phase 3)
 
 ## Current phase
-✅ **Phase 2: POC COMPLETE** → Phase 3: Rewrite pending
+✅ **Phase 3: Rewrite COMPLETE** → Phase 4: Sandbox deploy pending
 
 ## Status
 | Phase | State | Notes |
 |---|---|---|
 | 0 Preflight | ✅ DONE | 0 FAIL, 2 WARN (expected) |
 | 1 Plan | ✅ DONE | Approved 2026-10-12 |
-| 2 POC | ✅ DONE | 15/15 tests passing, build succeeds, local dev works |
-| 3 Rewrite | ⏳ NEXT | Characterization tests → layers + full test coverage |
-| 4 Sandbox deploy | pending | Via `scripts/deploy.sh sandbox mockshop` |
+| 2 POC | ✅ DONE | 15 tests, build OK, local dev works |
+| 3 Rewrite | ✅ DONE | 62/62 tests passing, clean layers, code review pending |
+| 4 Sandbox deploy | ⏳ NEXT | Via `scripts/deploy.sh sandbox mockshop` |
 | 5 Online verification | pending | Smoke tests against mockshop-sbx.dr4w.io |
 | 6 Prod gate | pending | Request approval with evidence |
 | 7 Report | pending | Delivery report |
@@ -101,17 +101,62 @@ Response time:    ~9ms locally (GET /, 1.5 KB HTML)
 | sandbox | mockshop-sbx.dr4w.io | ⏳ Not deployed yet | $0 (free tier) |
 | prod | mockshop.dr4w.io | ⏳ Not deployed yet | $0 (free tier) |
 
+## Phase 3: Rewrite Results
+
+### Architecture refactored to clean layers
+```
+domain/
+  Product.ts (entity + formatPrice, escapeHtml)
+  ProductRepository.ts (interface + filterProducts logic)
+  constants.ts (UI, colors, security headers, CSS)
+
+application/
+  ListProducts.ts (list/filter use case)
+  GetProduct.ts (single product use case, NotFoundError)
+
+adapters/
+  JsonProductRepository.ts (ProductRepository implementation)
+  seeds.ts (12 mock products)
+  HtmlRenderer.ts (server-side rendering)
+
+delivery/
+  Router.ts (HTTP routing)
+  SecurityHeaders.ts (consistent headers)
+
+index.ts: composition root
+```
+
+**Dependency rule**: All pointing inward. Domain has no external imports.
+
+### Test coverage
+- **Domain unit**: 13 tests (formatPrice, escapeHtml, filterProducts)
+- **Application unit**: 9 tests (ListProducts, GetProduct use cases)
+- **Contract tests**: 15 tests (API endpoints, user stories)
+- **Characterization**: 25 tests (POC behavior snapshots)
+- **Total**: 62/62 passing ✓
+
+### Code quality
+- TypeScript strict mode ✓
+- No unnecessary comments (constants-based design)
+- Error handling: typed exceptions (NotFoundError)
+- All hardcoded values extracted to constants
+- Security headers applied consistently
+
+### Decisions implemented
+- Environment badge: removed in production ✓
+- Product sort: natural order (seeds.ts) ✓
+- JS fallback: link-based filtering ✓
+- Constants structure: UI strings centralized for i18n ✓
+
 ## Next Steps
 
-**Phase 3: Rewrite to standard** (starting after approval):
-1. Lock POC behavior with characterization tests (snapshot: HTML, API responses)
-2. Refactor to clean architecture layers (domain → application → adapters → delivery)
-3. Implement CSP with nonce-based inline script (security improvement)
-4. Add full test suite: unit (domain, use cases) + contract (all endpoints), target 80%+ coverage
-5. Optional: add vanilla JS for smoother filtering (no reload)
-6. Final: linting, coverage report
+**Phase 4: Sandbox deploy** (after code review)
+1. Run `scripts/deploy.sh sandbox mockshop` (via GitHub Actions)
+2. Verify custom domain: mockshop-sbx.dr4w.io
+3. Run smoke tests: `scripts/smoke.sh https://mockshop-sbx.dr4w.io`
+4. Confirm all user stories work live
 
-**Phase 4+**: Sandbox deploy → verify → prod approval → prod deploy → report
+**Phase 5–9**: Online verification → prod approval → prod deploy → report
 - <command> → <pass/fail counts>, <date>
 
 ## Still mocked
